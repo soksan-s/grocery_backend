@@ -41,10 +41,26 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
   if (!name || !category || !description || price == null || stock == null || !imageUrl) {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
+  const parsedPrice = Number(price);
+  const parsedStock = Number(stock);
+  if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({ error: 'Invalid product price.' });
+  }
+  if (!Number.isFinite(parsedStock) || parsedStock < 0) {
+    return res.status(400).json({ error: 'Invalid stock value.' });
+  }
   const parsedDiscount = Number(discountPercent ?? 0);
   const discount = Number.isFinite(parsedDiscount)
     ? Math.max(0, Math.min(90, parsedDiscount))
     : 0;
+  const nextStart = discountStart ? new Date(discountStart) : null;
+  const nextEnd = discountEnd ? new Date(discountEnd) : null;
+  if ((nextStart && Number.isNaN(nextStart.getTime())) || (nextEnd && Number.isNaN(nextEnd.getTime()))) {
+    return res.status(400).json({ error: 'Invalid discount date.' });
+  }
+  if (nextStart && nextEnd && nextEnd < nextStart) {
+    return res.status(400).json({ error: 'Discount end date must be after start date.' });
+  }
 
   const id = `p${Date.now()}`;
   const row = await prisma.product.create({
@@ -53,12 +69,12 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
       name,
       category,
       description,
-      price: Number(price),
+      price: parsedPrice,
       discountPercent: discount,
-      discountStart: discountStart ? new Date(discountStart) : null,
-      discountEnd: discountEnd ? new Date(discountEnd) : null,
+      discountStart: nextStart,
+      discountEnd: nextEnd,
       imageUrl,
-      stock: Number(stock),
+      stock: Math.trunc(parsedStock),
       isActive: true,
     },
   });
@@ -189,6 +205,21 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req, res) => {
       : discountEnd
       ? new Date(discountEnd)
       : null;
+  if ((nextStart && Number.isNaN(nextStart.getTime())) || (nextEnd && Number.isNaN(nextEnd.getTime()))) {
+    return res.status(400).json({ error: 'Invalid discount date.' });
+  }
+  if (nextStart && nextEnd && nextEnd < nextStart) {
+    return res.status(400).json({ error: 'Discount end date must be after start date.' });
+  }
+
+  const nextPrice = price == null ? existing.price : Number(price);
+  const nextStock = stock == null ? existing.stock : Number(stock);
+  if (!Number.isFinite(nextPrice) || nextPrice < 0) {
+    return res.status(400).json({ error: 'Invalid product price.' });
+  }
+  if (!Number.isFinite(nextStock) || nextStock < 0) {
+    return res.status(400).json({ error: 'Invalid stock value.' });
+  }
 
   const row = await prisma.product.update({
     where: { id: req.params.id },
@@ -196,10 +227,10 @@ router.put('/:id', requireAuth, requireRole('admin'), async (req, res) => {
       name: name ?? existing.name,
       category: category ?? existing.category,
       description: description ?? existing.description,
-      price: price == null ? existing.price : Number(price),
+      price: nextPrice,
       discountPercent: discount,
       imageUrl: imageUrl ?? existing.imageUrl,
-      stock: stock == null ? existing.stock : Number(stock),
+      stock: Math.trunc(nextStock),
       isActive: isActive == null ? existing.isActive : Boolean(isActive),
       discountStart: nextStart,
       discountEnd: nextEnd,
@@ -215,15 +246,47 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(404).json({ error: 'Product not found.' });
   }
 
-  await prisma.product.delete({ where: { id: req.params.id } });
+  const orderLineCount = await prisma.orderLine.count({
+    where: { productId: req.params.id },
+  });
+
+  // Preserve products that already appear in orders so historical invoices
+  // and sales reports stay consistent. They get archived instead of deleted.
+  if (orderLineCount > 0) {
+    const archived = await prisma.product.update({
+      where: { id: req.params.id },
+      data: {
+        isActive: false,
+        stock: 0,
+      },
+    });
+
+    await prisma.$transaction([
+      prisma.favorite.deleteMany({ where: { productId: req.params.id } }),
+    ]);
+
+    return res.json({
+      archived: true,
+      product: mapProduct(archived),
+      message: 'Product was archived because it has order history.',
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.favorite.deleteMany({ where: { productId: req.params.id } }),
+    prisma.productComment.deleteMany({ where: { productId: req.params.id } }),
+    prisma.productRating.deleteMany({ where: { productId: req.params.id } }),
+    prisma.restock.deleteMany({ where: { productId: req.params.id } }),
+    prisma.product.delete({ where: { id: req.params.id } }),
+  ]);
   return res.status(204).send();
 });
 
 router.post('/:id/restock', requireAuth, requireRole('admin'), async (req, res) => {
   const { quantity } = req.body || {};
   const qty = Number(quantity);
-  if (!qty || qty <= 0) {
-    return res.status(400).json({ error: 'Quantity must be greater than 0.' });
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isInteger(qty)) {
+    return res.status(400).json({ error: 'Quantity must be a whole number greater than 0.' });
   }
 
   const existing = await prisma.product.findUnique({ where: { id: req.params.id } });

@@ -21,6 +21,9 @@ router.post('/', requireAuth, requireRole('admin'), upload.single('image'), asyn
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
   }
+  if (!req.file.mimetype?.startsWith('image/')) {
+    return res.status(400).json({ error: 'Only image uploads are allowed.' });
+  }
 
   if (!process.env.CLOUDINARY_CLOUD_NAME ||
       !process.env.CLOUDINARY_API_KEY ||

@@ -15,6 +15,17 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/:productId', requireAuth, async (req, res) => {
   const productId = req.params.productId;
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { id: true, isActive: true },
+  });
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found.' });
+  }
+  if (!product.isActive) {
+    return res.status(400).json({ error: 'Product is not available.' });
+  }
+
   const existing = await prisma.favorite.findUnique({
     where: { userId_productId: { userId: req.user.id, productId } },
   });

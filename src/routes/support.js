@@ -85,13 +85,16 @@ router.patch('/:id/reply', requireAuth, requireRole('admin'), async (req, res) =
   if (!existing) {
     return res.status(404).json({ error: 'Ticket not found.' });
   }
+  if (existing.status === 'closed') {
+    return res.status(400).json({ error: 'Ticket is already closed.' });
+  }
 
   const row = await prisma.supportTicket.update({
     where: { id },
     data: {
       adminReply: reply.toString().trim(),
       repliedAt: new Date(),
-      status: existing.status === 'closed' ? 'closed' : 'answered',
+      status: 'answered',
       messages: {
         create: {
           userId: req.user.id,

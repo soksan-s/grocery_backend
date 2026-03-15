@@ -28,6 +28,14 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
   if (type === 'percent' && parsedValue > 90) {
     return res.status(400).json({ error: 'Percent too high (max 90).' });
   }
+  const parsedStartsAt = parseOptionalDate(startsAt);
+  const parsedEndsAt = parseOptionalDate(endsAt);
+  if ((startsAt && !parsedStartsAt) || (endsAt && !parsedEndsAt)) {
+    return res.status(400).json({ error: 'Invalid coupon date.' });
+  }
+  if (parsedStartsAt && parsedEndsAt && parsedEndsAt < parsedStartsAt) {
+    return res.status(400).json({ error: 'End date must be after start date.' });
+  }
 
   const existing = await prisma.coupon.findUnique({
     where: { code: normalizedCode },
@@ -44,8 +52,8 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
       isActive: true,
       audience: audienceValue,
       description: description?.toString(),
-      startsAt: startsAt ? new Date(startsAt) : null,
-      endsAt: endsAt ? new Date(endsAt) : null,
+      startsAt: parsedStartsAt,
+      endsAt: parsedEndsAt,
       userEmail: userEmail?.toString() ?? null,
     },
   });
@@ -79,6 +87,28 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
   if (nextType === 'percent' && nextValue > 90) {
     return res.status(400).json({ error: 'Percent too high (max 90).' });
   }
+  const nextAudience = audience === 'user' ? 'user' : 'all';
+  if (nextAudience === 'user' && !(userEmail?.toString().trim() || existing.userEmail?.trim())) {
+    return res.status(400).json({ error: 'User email is required.' });
+  }
+  const nextStartsAt =
+    startsAt === undefined
+      ? existing.startsAt
+      : startsAt
+      ? parseOptionalDate(startsAt)
+      : null;
+  const nextEndsAt =
+    endsAt === undefined
+      ? existing.endsAt
+      : endsAt
+      ? parseOptionalDate(endsAt)
+      : null;
+  if ((startsAt && !nextStartsAt) || (endsAt && !nextEndsAt)) {
+    return res.status(400).json({ error: 'Invalid coupon date.' });
+  }
+  if (nextStartsAt && nextEndsAt && nextEndsAt < nextStartsAt) {
+    return res.status(400).json({ error: 'End date must be after start date.' });
+  }
 
   const row = await prisma.coupon.update({
     where: { id: existing.id },
@@ -86,23 +116,13 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
       isActive: isActive == null ? existing.isActive : Boolean(isActive),
       type: nextType,
       value: nextValue,
-      audience: audience === 'user' ? 'user' : 'all',
+      audience: nextAudience,
       description: description == null ? existing.description : description,
-      startsAt:
-        startsAt === undefined
-          ? existing.startsAt
-          : startsAt
-          ? new Date(startsAt)
-          : null,
-      endsAt:
-        endsAt === undefined
-          ? existing.endsAt
-          : endsAt
-          ? new Date(endsAt)
-          : null,
+      startsAt: nextStartsAt,
+      endsAt: nextEndsAt,
       userEmail:
-        audience === 'user'
-          ? userEmail?.toString() ?? existing.userEmail
+        nextAudience === 'user'
+          ? userEmail?.toString().trim() ?? existing.userEmail
           : null,
     },
   });
@@ -149,3 +169,15 @@ router.get('/active', requireAuth, async (req, res) => {
 });
 
 export default router;
+
+function parseOptionalDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
