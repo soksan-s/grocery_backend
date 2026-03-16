@@ -1,10 +1,23 @@
-﻿import { Router } from 'express';
+import path from 'node:path';
+import { Router } from 'express';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+const imageExtensions = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.svg',
+  '.heic',
+  '.heif',
+  '.avif',
+]);
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -21,7 +34,7 @@ router.post('/', requireAuth, requireRole('admin'), upload.single('image'), asyn
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
   }
-  if (!req.file.mimetype?.startsWith('image/')) {
+  if (!isImageUpload(req.file)) {
     return res.status(400).json({ error: 'Only image uploads are allowed.' });
   }
 
@@ -59,5 +72,18 @@ router.post('/', requireAuth, requireRole('admin'), upload.single('image'), asyn
     return res.status(500).json({ error: 'Upload failed.' });
   }
 });
+
+function isImageUpload(file) {
+  const mimeType = (file.mimetype ?? '').toLowerCase();
+  if (mimeType.startsWith('image/')) {
+    return true;
+  }
+  if (mimeType !== 'application/octet-stream') {
+    return false;
+  }
+
+  const extension = path.extname(file.originalname ?? '').toLowerCase();
+  return imageExtensions.has(extension);
+}
 
 export default router;
