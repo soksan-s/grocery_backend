@@ -24,8 +24,29 @@ router.get('/me', requireAuth, async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   const { shippingAddress, paymentMethod, lines, couponCode } = req.body || {};
+  const shippingPlaceLabel =
+    req.body?.shippingPlaceLabel?.toString().trim() || null;
+  const shippingLatitude = parseCoordinate(req.body?.shippingLatitude);
+  const shippingLongitude = parseCoordinate(req.body?.shippingLongitude);
   if (!shippingAddress || !paymentMethod || !Array.isArray(lines) || lines.length === 0) {
     return res.status(400).json({ error: 'Invalid order payload.' });
+  }
+  if ((shippingLatitude === null) !== (shippingLongitude === null)) {
+    return res.status(400).json({
+      error: 'Shipping latitude and longitude must be provided together.',
+    });
+  }
+  if (
+    (shippingLatitude !== null &&
+      (!Number.isFinite(shippingLatitude) ||
+        shippingLatitude < -90 ||
+        shippingLatitude > 90)) ||
+    (shippingLongitude !== null &&
+      (!Number.isFinite(shippingLongitude) ||
+        shippingLongitude < -180 ||
+        shippingLongitude > 180))
+  ) {
+    return res.status(400).json({ error: 'Invalid shipping coordinates.' });
   }
 
   let coupon = null;
@@ -140,6 +161,9 @@ router.post('/', requireAuth, async (req, res) => {
         id: orderId,
         customerId: req.user.id,
         shippingAddress,
+        shippingLatitude,
+        shippingLongitude,
+        shippingPlaceLabel,
         paymentMethod,
         total,
         status: 'pending',
@@ -259,7 +283,13 @@ function mapOrder(row) {
     id: row.id,
     customerId: row.customerId,
     customerEmail: row.customer?.email ?? '',
+    customerFirstName: row.customer?.firstName ?? null,
+    customerLastName: row.customer?.lastName ?? null,
+    customerProfileImageUrl: row.customer?.profileImageUrl ?? null,
     shippingAddress: row.shippingAddress,
+    shippingLatitude: row.shippingLatitude ?? null,
+    shippingLongitude: row.shippingLongitude ?? null,
+    shippingPlaceLabel: row.shippingPlaceLabel ?? null,
     paymentMethod: row.paymentMethod,
     total: row.total,
     status: row.status,
@@ -273,6 +303,14 @@ function mapOrder(row) {
     couponValue: row.couponValue ?? null,
     couponDiscount: row.couponDiscount ?? null,
   };
+}
+
+function parseCoordinate(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 function isCouponUsable(coupon, email) {

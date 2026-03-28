@@ -30,7 +30,16 @@ router.post('/', requireAuth, async (req, res) => {
     include: {
       messages: {
         include: {
-          user: { select: { id: true, email: true, role: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              firstName: true,
+              lastName: true,
+              profileImageUrl: true,
+            },
+          },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -45,7 +54,16 @@ router.get('/me', requireAuth, async (req, res) => {
     include: {
       messages: {
         include: {
-          user: { select: { id: true, email: true, role: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              firstName: true,
+              lastName: true,
+              profileImageUrl: true,
+            },
+          },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -61,7 +79,16 @@ router.get('/', requireAuth, requireRole('admin'), async (_req, res) => {
       user: true,
       messages: {
         include: {
-          user: { select: { id: true, email: true, role: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              firstName: true,
+              lastName: true,
+              profileImageUrl: true,
+            },
+          },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -105,7 +132,16 @@ router.patch('/:id/reply', requireAuth, requireRole('admin'), async (req, res) =
     include: {
       messages: {
         include: {
-          user: { select: { id: true, email: true, role: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              firstName: true,
+              lastName: true,
+              profileImageUrl: true,
+            },
+          },
         },
         orderBy: { createdAt: 'asc' },
       },
@@ -155,7 +191,16 @@ router.post('/:id/messages', requireAuth, async (req, res) => {
       user: true,
       messages: {
         include: {
-          user: { select: { id: true, email: true, role: true } },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              firstName: true,
+              lastName: true,
+              profileImageUrl: true,
+            },
+          },
         },
         orderBy: { createdAt: 'asc' },
       },

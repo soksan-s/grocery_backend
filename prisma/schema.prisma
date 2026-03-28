@@ -35,6 +35,9 @@ enum CouponAudience {
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
+  firstName    String?
+  lastName     String?
+  profileImageUrl String?
   passwordHash String
   role         UserRole @default(client)
   createdAt    DateTime @default(now())
@@ -74,6 +77,9 @@ model Order {
   id              String       @id
   customerId      Int
   shippingAddress String
+  shippingLatitude Float?
+  shippingLongitude Float?
+  shippingPlaceLabel String?
   paymentMethod   String
   total           Float
   status          OrderStatus  @default(pending)

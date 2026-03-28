@@ -49,6 +49,7 @@ app.use(
     limit: 200,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => !isProduction,
   }),
 );
 app.use(

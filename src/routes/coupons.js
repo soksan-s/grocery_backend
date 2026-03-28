@@ -7,7 +7,7 @@ const router = Router();
 
 router.get('/', requireAuth, requireRole('admin'), async (_req, res) => {
   const rows = await prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
-  return res.json({ data: rows });
+  return res.json({ data: await serializeCoupons(rows) });
 });
 
 router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
@@ -18,7 +18,8 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: 'Invalid coupon payload.' });
   }
   const audienceValue = audience === 'user' ? 'user' : 'all';
-  if (audienceValue === 'user' && !userEmail) {
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  if (audienceValue === 'user' && !normalizedUserEmail) {
     return res.status(400).json({ error: 'User email is required.' });
   }
   const parsedValue = Number(value);
@@ -44,6 +45,17 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(409).json({ error: 'Coupon code already exists.' });
   }
 
+  let targetUser = null;
+  if (audienceValue === 'user') {
+    targetUser = await prisma.user.findUnique({
+      where: { email: normalizedUserEmail },
+      select: userSummarySelect,
+    });
+    if (!targetUser || targetUser.role !== 'client') {
+      return res.status(404).json({ error: 'Selected user was not found.' });
+    }
+  }
+
   const row = await prisma.coupon.create({
     data: {
       code: normalizedCode,
@@ -54,10 +66,10 @@ router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
       description: description?.toString(),
       startsAt: parsedStartsAt,
       endsAt: parsedEndsAt,
-      userEmail: userEmail?.toString() ?? null,
+      userEmail: targetUser?.email ?? null,
     },
   });
-  return res.status(201).json(row);
+  return res.status(201).json(serializeCoupon(row, targetUser));
 });
 
 router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
@@ -88,7 +100,8 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: 'Percent too high (max 90).' });
   }
   const nextAudience = audience === 'user' ? 'user' : 'all';
-  if (nextAudience === 'user' && !(userEmail?.toString().trim() || existing.userEmail?.trim())) {
+  const nextUserEmail = normalizeEmail(userEmail) ?? normalizeEmail(existing.userEmail);
+  if (nextAudience === 'user' && !nextUserEmail) {
     return res.status(400).json({ error: 'User email is required.' });
   }
   const nextStartsAt =
@@ -110,6 +123,17 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: 'End date must be after start date.' });
   }
 
+  let nextTargetUser = null;
+  if (nextAudience === 'user') {
+    nextTargetUser = await prisma.user.findUnique({
+      where: { email: nextUserEmail },
+      select: userSummarySelect,
+    });
+    if (!nextTargetUser || nextTargetUser.role !== 'client') {
+      return res.status(404).json({ error: 'Selected user was not found.' });
+    }
+  }
+
   const row = await prisma.coupon.update({
     where: { id: existing.id },
     data: {
@@ -120,13 +144,10 @@ router.patch('/:id', requireAuth, requireRole('admin'), async (req, res) => {
       description: description == null ? existing.description : description,
       startsAt: nextStartsAt,
       endsAt: nextEndsAt,
-      userEmail:
-        nextAudience === 'user'
-          ? userEmail?.toString().trim() ?? existing.userEmail
-          : null,
+      userEmail: nextAudience === 'user' ? nextTargetUser?.email ?? null : null,
     },
   });
-  return res.json(row);
+  return res.json(serializeCoupon(row, nextTargetUser));
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), async (req, res) => {
@@ -182,10 +203,19 @@ router.get('/active', requireAuth, async (req, res) => {
     },
     orderBy: { createdAt: 'desc' },
   });
-  return res.json({ data: rows });
+  return res.json({ data: await serializeCoupons(rows) });
 });
 
 export default router;
+
+const userSummarySelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  profileImageUrl: true,
+  role: true,
+};
 
 function parseOptionalDate(value) {
   if (!value) {
@@ -197,4 +227,55 @@ function parseOptionalDate(value) {
     return null;
   }
   return parsed;
+}
+
+function normalizeEmail(value) {
+  const normalized = (value ?? '').toString().trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+async function serializeCoupons(rows) {
+  const emails = [
+    ...new Set(
+      rows
+        .map((row) => normalizeEmail(row.userEmail))
+        .filter(Boolean),
+    ),
+  ];
+
+  const users = emails.length
+    ? await prisma.user.findMany({
+        where: { email: { in: emails } },
+        select: userSummarySelect,
+      })
+    : [];
+
+  const usersByEmail = new Map(
+    users.map((user) => [user.email.toLowerCase(), user]),
+  );
+
+  return rows.map((row) =>
+    serializeCoupon(
+      row,
+      normalizeEmail(row.userEmail)
+        ? usersByEmail.get(normalizeEmail(row.userEmail)) ?? null
+        : null,
+    ),
+  );
+}
+
+function serializeCoupon(row, targetUser) {
+  return {
+    ...row,
+    targetUser: targetUser
+      ? {
+          id: targetUser.id,
+          email: targetUser.email,
+          firstName: targetUser.firstName ?? null,
+          lastName: targetUser.lastName ?? null,
+          profileImageUrl: targetUser.profileImageUrl ?? null,
+          role: targetUser.role ?? null,
+        }
+      : null,
+  };
 }
