@@ -32,9 +32,19 @@ enum CouponAudience {
   user
 }
 
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  expired
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
+  firstName    String?
+  lastName     String?
+  profileImageUrl String?
   passwordHash String
   role         UserRole @default(client)
   createdAt    DateTime @default(now())
@@ -44,6 +54,7 @@ model User {
   supportTickets SupportTicket[]
   supportMessages SupportTicketMessage[]
   comments     ProductComment[]
+  couponRedemptions CouponRedemption[]
 }
 
 model Product {
@@ -73,9 +84,25 @@ model Order {
   id              String       @id
   customerId      Int
   shippingAddress String
+  shippingLatitude Float?
+  shippingLongitude Float?
+  shippingPlaceLabel String?
   paymentMethod   String
   total           Float
   status          OrderStatus  @default(pending)
+  tranId          String?      @unique
+  paymentGateway  String?
+  paymentStatus   PaymentStatus @default(pending)
+  paymentAmount   Float?
+  paymentCurrency String?
+  paymentExpiresAt DateTime?
+  paymentPaidAt   DateTime?
+  paymentVerifiedAt DateTime?
+  paymentLastCheckedAt DateTime?
+  paymentCallbackReceivedAt DateTime?
+  paymentCallbackStatus String?
+  paymentApprovalCode String?
+  paymentFailureReason String?
   createdAt       DateTime     @default(now())
   trackingNumber  String?
   trackingCarrier String?
@@ -87,6 +114,7 @@ model Order {
   couponDiscount  Float?
   customer        User         @relation(fields: [customerId], references: [id])
   lines           OrderLine[]
+  couponRedemption CouponRedemption?
 }
 
 model OrderLine {
@@ -186,4 +214,18 @@ model Coupon {
   endsAt    DateTime?
   userEmail String?
   createdAt DateTime   @default(now())
+  couponRedemptions CouponRedemption[]
+}
+
+model CouponRedemption {
+  id        Int      @id @default(autoincrement())
+  couponId  Int
+  userId    Int
+  orderId   String   @unique
+  usedAt    DateTime @default(now())
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@unique([couponId, userId])
 }

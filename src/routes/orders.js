@@ -1,7 +1,13 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 
 import prisma from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import {
+  OrderValidationError,
+  commitOrderDraft,
+  mapOrder,
+  prepareOrderDraft,
+} from '../services/order_checkout.js';
 
 const router = Router();
 
@@ -23,118 +29,27 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 router.post('/', requireAuth, async (req, res) => {
-  const { shippingAddress, paymentMethod, lines, couponCode } = req.body || {};
-  if (!shippingAddress || !paymentMethod || !Array.isArray(lines) || lines.length === 0) {
-    return res.status(400).json({ error: 'Invalid order payload.' });
-  }
-
-  let coupon = null;
-  if (couponCode) {
-    coupon = await prisma.coupon.findUnique({
-      where: { code: couponCode.toString().trim().toUpperCase() },
-    });
-    if (!coupon || !coupon.isActive || !isCouponUsable(coupon, req.user.email)) {
-      return res.status(400).json({ error: 'Invalid coupon.' });
-    }
-  }
-
-  const products = await prisma.product.findMany();
-  const productMap = new Map(products.map((row) => [row.id, row]));
-
-  let subtotal = 0;
-  for (const line of lines) {
-    const product = productMap.get(line.productId);
-    if (!product || !product.isActive) {
-      return res.status(400).json({ error: 'Product unavailable.' });
-    }
-    if (product.stock < line.quantity) {
-      return res.status(400).json({ error: 'Insufficient stock.' });
-    }
-    const now = new Date();
-    const start = product.discountStart ? new Date(product.discountStart) : null;
-    const end = product.discountEnd ? new Date(product.discountEnd) : null;
-    const isActive =
-      (product.discountPercent ?? 0) > 0 &&
-      (!start || start <= now) &&
-      (!end || end >= now);
-    const discountPercent = isActive
-      ? Number(product.discountPercent ?? 0) || 0
-      : 0;
-    const priceAfterDiscount = product.price * (1 - discountPercent / 100);
-    subtotal += priceAfterDiscount * line.quantity;
-  }
-
-  let couponDiscount = 0;
-  if (coupon) {
-    if (coupon.type === 'percent') {
-      couponDiscount = subtotal * (coupon.value / 100);
-    } else {
-      couponDiscount = coupon.value;
-    }
-  }
-  const total = Math.max(0, subtotal - couponDiscount);
-
-  const orderId = `ORD-${Date.now()}`;
-
-  await prisma.$transaction(async (tx) => {
-    await tx.order.create({
-      data: {
-        id: orderId,
-        customerId: req.user.id,
-        shippingAddress,
-        paymentMethod,
-        total,
-        status: 'pending',
-        couponCode: coupon?.code ?? null,
-        couponType: coupon?.type ?? null,
-        couponValue: coupon?.value ?? null,
-        couponDiscount,
-      },
+  try {
+    const draft = await prepareOrderDraft({
+      customerId: req.user.id,
+      customerEmail: req.user.email,
+      shippingAddress: req.body?.shippingAddress,
+      paymentMethod: req.body?.paymentMethod,
+      lines: req.body?.lines,
+      couponCode: req.body?.couponCode,
+      shippingLatitude: req.body?.shippingLatitude,
+      shippingLongitude: req.body?.shippingLongitude,
+      shippingPlaceLabel: req.body?.shippingPlaceLabel,
     });
 
-    for (const line of lines) {
-      const product = productMap.get(line.productId);
-      const now = new Date();
-      const start = product.discountStart
-        ? new Date(product.discountStart)
-        : null;
-      const end = product.discountEnd ? new Date(product.discountEnd) : null;
-      const isActive =
-        (product.discountPercent ?? 0) > 0 &&
-        (!start || start <= now) &&
-        (!end || end >= now);
-      const discountPercent = isActive
-        ? Number(product.discountPercent ?? 0) || 0
-        : 0;
-      const priceAfterDiscount = product.price * (1 - discountPercent / 100);
-      await tx.orderLine.create({
-        data: {
-          orderId,
-          productId: product.id,
-          productName: product.name,
-          quantity: line.quantity,
-          unitPrice: priceAfterDiscount,
-          discountPercent,
-        },
-      });
-
-      await tx.product.update({
-        where: { id: product.id },
-        data: { stock: product.stock - line.quantity },
-      });
-      productMap.set(product.id, {
-        ...product,
-        stock: product.stock - line.quantity,
-      });
+    const order = await commitOrderDraft(draft);
+    return res.status(201).json(mapOrder(order));
+  } catch (error) {
+    if (error instanceof OrderValidationError) {
+      return res.status(error.statusCode).json({ error: error.message });
     }
-  });
-
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { customer: true },
-  });
-
-  return res.status(201).json(mapOrder(order));
+    throw error;
+  }
 });
 
 router.patch('/:id/status', requireAuth, requireRole('admin'), async (req, res) => {
@@ -204,43 +119,5 @@ router.get('/:id/lines', requireAuth, async (req, res) => {
     }))
   );
 });
-
-function mapOrder(row) {
-  if (!row) {
-    return null;
-  }
-  return {
-    id: row.id,
-    customerId: row.customerId,
-    customerEmail: row.customer?.email ?? '',
-    shippingAddress: row.shippingAddress,
-    paymentMethod: row.paymentMethod,
-    total: row.total,
-    status: row.status,
-    createdAt: row.createdAt,
-    trackingNumber: row.trackingNumber ?? null,
-    trackingCarrier: row.trackingCarrier ?? null,
-    trackingStatus: row.trackingStatus ?? null,
-    trackingUpdatedAt: row.trackingUpdatedAt ?? null,
-    couponCode: row.couponCode ?? null,
-    couponType: row.couponType ?? null,
-    couponValue: row.couponValue ?? null,
-    couponDiscount: row.couponDiscount ?? null,
-  };
-}
-
-function isCouponUsable(coupon, email) {
-  const now = new Date();
-  if (coupon.startsAt && new Date(coupon.startsAt) > now) {
-    return false;
-  }
-  if (coupon.endsAt && new Date(coupon.endsAt) < now) {
-    return false;
-  }
-  if (coupon.audience === 'user' && coupon.userEmail !== email) {
-    return false;
-  }
-  return true;
-}
 
 export default router;

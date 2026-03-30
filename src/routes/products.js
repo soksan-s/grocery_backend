@@ -2,28 +2,54 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 
 import prisma from '../db.js';
+import {
+  getFallbackProductById,
+  getFallbackProducts,
+  isDatabaseUnavailable,
+} from '../dev_catalog.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
-  const { active } = req.query;
-  const includeInactive = active === 'false';
+router.get('/', async (req, res, next) => {
+  try {
+    const { active } = req.query;
+    const includeInactive = active === 'false';
 
-  const rows = await prisma.product.findMany({
-    where: includeInactive ? undefined : { isActive: true },
-    orderBy: { createdAt: 'desc' },
-  });
+    const rows = await prisma.product.findMany({
+      where: includeInactive ? undefined : { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
 
-  return res.json(rows.map(mapProduct));
+    return res.json(rows.map(mapProduct));
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      const includeInactive = req.query.active === 'false';
+      return res.json(
+        getFallbackProducts({ includeInactive }).map(mapProduct),
+      );
+    }
+    return next(error);
+  }
 });
 
-router.get('/:id', async (req, res) => {
-  const row = await prisma.product.findUnique({ where: { id: req.params.id } });
-  if (!row) {
-    return res.status(404).json({ error: 'Product not found.' });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const row = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!row) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+    return res.json(mapProduct(row));
+  } catch (error) {
+    if (isDatabaseUnavailable(error)) {
+      const row = getFallbackProductById(req.params.id);
+      if (!row) {
+        return res.status(404).json({ error: 'Product not found.' });
+      }
+      return res.json(mapProduct(row));
+    }
+    return next(error);
   }
-  return res.json(mapProduct(row));
 });
 
 router.post('/', requireAuth, requireRole('admin'), async (req, res) => {
@@ -168,6 +194,93 @@ router.post('/import', requireAuth, requireRole('admin'), async (req, res) => {
     return res.status(400).json({ error: message });
   }
 
+  return res.status(201).json({ importedCount: normalizedRows.length });
+});
+
+router.post('/restock/import', requireAuth, requireRole('admin'), async (req, res) => {
+  const csv = req.body?.csv?.toString() ?? '';
+  if (!csv.trim()) {
+    return res.status(400).json({ error: 'CSV content is required.' });
+  }
+
+  let parsedRows;
+  try {
+    parsedRows = parseCsv(csv);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  if (parsedRows.length === 0) {
+    return res.status(400).json({ error: 'No inventory rows were found.' });
+  }
+
+  const normalizedRows = [];
+  const productIds = new Set();
+
+  for (let index = 0; index < parsedRows.length; index += 1) {
+    const row = parsedRows[index];
+    const line = index + 2;
+    const productId = row.productId?.trim();
+    const rawQuantity = row.quantityAdded?.trim() || row.quantity?.trim();
+
+    if (!productId) {
+      return res.status(400).json({ error: `Row ${line} is missing productId.` });
+    }
+
+    const quantityAdded = Number(rawQuantity);
+    if (!Number.isFinite(quantityAdded) || quantityAdded <= 0 || !Number.isInteger(quantityAdded)) {
+      return res.status(400).json({
+        error: `Row ${line} has an invalid quantityAdded value.`,
+      });
+    }
+
+    normalizedRows.push({
+      productId,
+      quantityAdded,
+    });
+    productIds.add(productId);
+  }
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: [...productIds] } },
+  });
+  const productMap = new Map(products.map((product) => [product.id, product]));
+
+  for (const row of normalizedRows) {
+    if (!productMap.has(row.productId)) {
+      return res.status(404).json({
+        error: `Product ${row.productId} was not found.`,
+      });
+    }
+  }
+
+  const operations = [];
+  for (const row of normalizedRows) {
+    const product = productMap.get(row.productId);
+    const nextStock = product.stock + row.quantityAdded;
+
+    operations.push(
+      prisma.product.update({
+        where: { id: product.id },
+        data: { stock: nextStock },
+      })
+    );
+    operations.push(
+      prisma.restock.create({
+        data: {
+          productId: product.id,
+          quantityAdded: row.quantityAdded,
+        },
+      })
+    );
+
+    productMap.set(product.id, {
+      ...product,
+      stock: nextStock,
+    });
+  }
+
+  await prisma.$transaction(operations);
   return res.status(201).json({ importedCount: normalizedRows.length });
 });
 
@@ -418,7 +531,10 @@ function parseCsv(content) {
     return [];
   }
 
-  const headers = rows[0].map((value) => value.trim());
+  const headers = rows[0].map((value, index) => {
+    const cleaned = value.trim();
+    return index == 0 ? cleaned.replace(/^\\uFEFF/, '') : cleaned;
+  });
   return rows.slice(1).map((row) => {
     const record = {};
     headers.forEach((header, index) => {
@@ -431,3 +547,4 @@ function parseCsv(content) {
 }
 
 export default router;
+

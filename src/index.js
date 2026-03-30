@@ -19,18 +19,23 @@ import favoriteRoutes from './routes/favorites.js';
 import supportRoutes from './routes/support.js';
 import ratingRoutes from './routes/ratings.js';
 import commentRoutes from './routes/comments.js';
+import paywayRoutes from './routes/payway.js';
+import paymentRoutes from './routes/payments.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+const databaseUrl = process.env.DATABASE_URL ?? '';
+const hasUsableDatabaseUrl =
+  databaseUrl.length > 0 && !databaseUrl.includes('USER:PASSWORD@HOST');
 const isProduction = process.env.NODE_ENV === 'production';
 const corsOrigins = (process.env.CORS_ORIGIN ?? '')
   .split(',')
   .map((value) => value.trim())
   .filter(Boolean);
 const allowAllOrigins = corsOrigins.includes('*');
-const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
+const localhostOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 app.set('trust proxy', 1);
 app.use(morgan(isProduction ? 'combined' : 'dev'));
@@ -45,6 +50,7 @@ app.use(
     limit: 200,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => !isProduction,
   }),
 );
 app.use(
@@ -56,14 +62,14 @@ app.use(
       if (allowAllOrigins) {
         return callback(null, true);
       }
-      if (
-        corsOrigins.includes(origin) ||
-        (!isProduction && localhostOrigin.test(origin))
-      ) {
+      if (corsOrigins.includes(origin) || localhostOrigin.test(origin)) {
         return callback(null, true);
       }
       return callback(new Error('Not allowed by CORS'));
     },
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
   }),
 );
 app.use(express.json());
@@ -71,7 +77,11 @@ app.use(express.json());
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    databaseConfigured: hasUsableDatabaseUrl,
+    mode: hasUsableDatabaseUrl ? 'database' : 'demo',
+  });
 });
 
 app.use('/api/auth', authRoutes);
@@ -83,8 +93,10 @@ app.use('/api/support', supportRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/api/restocks', restockRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/payway', paywayRoutes);
 
 if (process.env.SEED_ON_STARTUP === 'true') {
   seedAdmin()
@@ -92,8 +104,15 @@ if (process.env.SEED_ON_STARTUP === 'true') {
     .catch((err) => console.error('Seed failed:', err));
 }
 
-app.listen(port, () => {
+// app.listen(port, () => {
+//   console.log(`API listening on port ${port}`);
+  app.listen(port, '0.0.0.0', () => {
   console.log(`API listening on port ${port}`);
+  if (!hasUsableDatabaseUrl) {
+    console.warn(
+      'DATABASE_URL is missing or still using the placeholder value. Public catalog routes will use demo fallback data.',
+    );
+  }
 });
 
 app.use((err, req, res, next) => {

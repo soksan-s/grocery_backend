@@ -5,6 +5,21 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
+function serializeComment(row) {
+  return {
+    id: row.id,
+    productId: row.productId,
+    userId: row.userId,
+    userEmail: row.user.email,
+    userFirstName: row.user.firstName ?? null,
+    userLastName: row.user.lastName ?? null,
+    userProfileImageUrl: row.user.profileImageUrl ?? null,
+    message: row.message,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
 router.get('/', async (req, res) => {
   const productId = req.query.productId?.toString();
   if (!productId) {
@@ -18,15 +33,7 @@ router.get('/', async (req, res) => {
   });
 
   return res.json({
-    data: rows.map((row) => ({
-      id: row.id,
-      productId: row.productId,
-      userId: row.userId,
-      userEmail: row.user.email,
-      message: row.message,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    })),
+    data: rows.map(serializeComment),
   });
 });
 
@@ -50,15 +57,7 @@ router.post('/', requireAuth, async (req, res) => {
     include: { user: true },
   });
 
-  return res.status(201).json({
-    id: row.id,
-    productId: row.productId,
-    userId: row.userId,
-    userEmail: row.user.email,
-    message: row.message,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  });
+  return res.status(201).json(serializeComment(row));
 });
 
 router.patch('/:id', requireAuth, async (req, res) => {
@@ -89,15 +88,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
     include: { user: true },
   });
 
-  return res.json({
-    id: row.id,
-    productId: row.productId,
-    userId: row.userId,
-    userEmail: row.user.email,
-    message: row.message,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  });
+  return res.json(serializeComment(row));
 });
 
 router.delete('/:id', requireAuth, async (req, res) => {

@@ -11,16 +11,22 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "axios": "^1.14.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.5.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
     "express-rate-limit": "^8.3.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
     "prisma": "^5.22.0"
-  }
+  },
+  "description": "```bash\r cd server\r npm install\r cp .env.example .env\r ```",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
