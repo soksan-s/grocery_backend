@@ -22,6 +22,37 @@ import {
 
 const router = Router();
 
+function resolvePublicBaseUrl(req) {
+  const explicitBaseUrl = (
+    process.env.BASE_URL ??
+    process.env.SERVER_PUBLIC_URL ??
+    ''
+  )
+    .trim()
+    .replace(/\/$/, '');
+
+  if (explicitBaseUrl) {
+    return explicitBaseUrl;
+  }
+
+  const forwardedProto = req
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim();
+  const forwardedHost = req
+    .get('x-forwarded-host')
+    ?.split(',')[0]
+    ?.trim();
+  const protocol = forwardedProto || req.protocol || 'https';
+  const host = forwardedHost || req.get('host')?.trim();
+
+  if (!host) {
+    return '';
+  }
+
+  return `${protocol}://${host}`.replace(/\/$/, '');
+}
+
 router.post('/create', requireAuth, async (req, res) => {
   try {
     const {
@@ -40,6 +71,7 @@ router.post('/create', requireAuth, async (req, res) => {
       phone,
     } = req.body ?? {};
 
+    const publicBaseUrl = resolvePublicBaseUrl(req);
     let order = null;
     let resolvedOrderId = orderId?.toString().trim() || null;
     let resolvedAmount = null;
@@ -103,6 +135,7 @@ router.post('/create', requireAuth, async (req, res) => {
         email: email ?? req.user.email,
         phone,
         returnParams: draft.orderId,
+        baseUrl: publicBaseUrl,
       });
 
       order = await commitOrderDraft(draft, {
@@ -144,6 +177,7 @@ router.post('/create', requireAuth, async (req, res) => {
       email: email ?? req.user.email,
       phone,
       returnParams: order.id,
+      baseUrl: publicBaseUrl,
     });
 
     const updatedOrder = await prisma.order.update({

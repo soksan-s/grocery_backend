@@ -188,6 +188,7 @@ async function seedProducts() {
       imageUrl: 'https://picsum.photos/seed/chicken/900/500',
       stock: 22,
     },
+    
   ];
 
   for (const item of items) {

@@ -53,8 +53,23 @@ const PURCHASE_HASH_ORDER = [
   'return_params',
 ];
 
-export function getAbaConfig() {
-  const baseUrl = (process.env.BASE_URL ?? process.env.SERVER_PUBLIC_URL ?? '')
+class AbaConfigError extends Error {
+  constructor(message, details = null) {
+    super(message);
+    this.name = 'AbaConfigError';
+    this.statusCode = 500;
+    this.code = 'ABA_CONFIG_ERROR';
+    this.details = details;
+  }
+}
+
+export function getAbaConfig({ baseUrl } = {}) {
+  const resolvedBaseUrl = (
+    baseUrl ??
+    process.env.BASE_URL ??
+    process.env.SERVER_PUBLIC_URL ??
+    ''
+  )
     .trim()
     .replace(/\/$/, '');
 
@@ -83,7 +98,7 @@ export function getAbaConfig() {
       DEFAULT_CHECK_API_URL
     ).trim(),
 
-    baseUrl,
+    baseUrl: resolvedBaseUrl,
 
     // Use ABA Pay mode for USD decimal amounts
     paymentOption: 'abapay',
@@ -101,13 +116,24 @@ export function getAbaConfig() {
 
 export function assertAbaConfig(config = getAbaConfig()) {
   if (!config.merchantId || !config.apiKey) {
-    throw new Error(
+    throw new AbaConfigError(
       'ABA PayWay is not configured. Set ABA_MERCHANT_ID and ABA_API_KEY.',
+      {
+        missing: [
+          !config.merchantId ? 'ABA_MERCHANT_ID' : null,
+          !config.apiKey ? 'ABA_API_KEY' : null,
+        ].filter(Boolean),
+      },
     );
   }
 
   if (!config.baseUrl) {
-    throw new Error('BASE_URL is required for ABA callback delivery.');
+    throw new AbaConfigError(
+      'ABA PayWay needs a public callback URL. Set BASE_URL on Railway or call this API through its public domain.',
+      {
+        missing: ['BASE_URL'],
+      },
+    );
   }
 
   return config;
@@ -171,8 +197,9 @@ export async function createQrPayment({
   email,
   phone,
   returnParams,
+  baseUrl,
 }) {
-  const config = assertAbaConfig();
+  const config = assertAbaConfig(getAbaConfig({ baseUrl }));
   const reqTime = getReqTime();
   const normalizedCurrency = String(currency ?? 'USD').trim().toUpperCase();
 
