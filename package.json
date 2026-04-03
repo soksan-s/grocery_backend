@@ -18,10 +18,12 @@
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "express-rate-limit": "^8.3.1",
+    "google-auth-library": "^10.6.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
+    "nodemailer": "^8.0.4",
     "prisma": "^5.22.0"
   },
   "description": "```bash\r cd server\r npm install\r cp .env.example .env\r ```",

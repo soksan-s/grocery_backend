@@ -21,6 +21,7 @@ import ratingRoutes from './routes/ratings.js';
 import commentRoutes from './routes/comments.js';
 import paywayRoutes from './routes/payway.js';
 import paymentRoutes from './routes/payments.js';
+import deliveryLocationRoutes from './routes/delivery_locations.js';
 
 dotenv.config();
 
@@ -97,6 +98,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/restocks', restockRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/payway', paywayRoutes);
+app.use('/api/delivery-locations', deliveryLocationRoutes);
 
 if (process.env.SEED_ON_STARTUP === 'true') {
   seedAdmin()

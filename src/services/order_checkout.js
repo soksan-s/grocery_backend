@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 import prisma from '../db.js';
+import { saveDeliveryLocation } from './delivery_locations.js';
 
 export class OrderValidationError extends Error {
   constructor(statusCode, message) {
@@ -311,6 +312,23 @@ export async function commitOrderDraft(draft, { payment = {} } = {}) {
           where: { id: adjustment.productId },
           data: { stock: adjustment.nextStock },
         });
+      }
+
+      if (
+        draft.shippingLatitude != null &&
+        draft.shippingLongitude != null
+      ) {
+        await saveDeliveryLocation(
+          {
+            userId: draft.customerId,
+            address: draft.shippingAddress,
+            latitude: draft.shippingLatitude,
+            longitude: draft.shippingLongitude,
+            placeLabel: draft.shippingPlaceLabel,
+            makeDefault: true,
+          },
+          tx,
+        );
       }
     });
   } catch (error) {

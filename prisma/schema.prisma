@@ -39,94 +39,164 @@ enum PaymentStatus {
   expired
 }
 
+// model User {
+//   id           Int      @id @default(autoincrement())
+//   email        String   @unique
+//   firstName    String?
+//   lastName     String?
+//   profileImageUrl String?
+//   passwordHash String
+//   role         UserRole @default(client)
+//   createdAt    DateTime @default(now())
+//   orders       Order[]
+//   ratings      ProductRating[]
+//   favorites    Favorite[]
+//   supportTickets SupportTicket[]
+//   supportMessages SupportTicketMessage[]
+//   comments     ProductComment[]
+//   couponRedemptions CouponRedemption[]
+// }
+
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique
-  firstName    String?
-  lastName     String?
+  id              Int       @id @default(autoincrement())
+  email           String?   @unique
+  firstName       String?
+  lastName        String?
   profileImageUrl String?
-  passwordHash String
-  role         UserRole @default(client)
-  createdAt    DateTime @default(now())
-  orders       Order[]
-  ratings      ProductRating[]
-  favorites    Favorite[]
-  supportTickets SupportTicket[]
-  supportMessages SupportTicketMessage[]
-  comments     ProductComment[]
+  passwordHash    String?
+  googleSub       String?   @unique
+  emailVerified   Boolean   @default(false)
+  role            UserRole  @default(client)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  orders            Order[]
+  ratings           ProductRating[]
+  favorites         Favorite[]
+  supportTickets    SupportTicket[]
+  supportMessages   SupportTicketMessage[]
+  comments          ProductComment[]
   couponRedemptions CouponRedemption[]
+  deliveryLocations DeliveryLocation[]
+  refreshTokens     RefreshToken[]
+  otpVerifications  OtpVerification[]
+}
+
+model DeliveryLocation {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  address    String
+  latitude   Float
+  longitude  Float
+  placeLabel String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, latitude, longitude])
+  @@index([userId, isDefault, updatedAt])
+}
+
+model OtpVerification {
+  id           Int       @id @default(autoincrement())
+  userId       Int?
+  target       String
+  type         String
+  codeHash     String
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+  attemptCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  tokenHash  String
+  deviceInfo String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Product {
-  id          String   @id
-  name        String
-  category    String
-  description String
-  price       Float
-  discountPercent Float @default(0)
-  discountStart DateTime?
-  discountEnd   DateTime?
-  ratingAvg   Float   @default(0)
-  ratingCount Int     @default(0)
-  imageUrl    String
-  stock       Int
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  orderLines  OrderLine[]
-  restocks    Restock[]
-  ratings     ProductRating[]
-  favorites   Favorite[]
-  comments    ProductComment[]
+  id              String           @id
+  name            String
+  category        String
+  description     String
+  price           Float
+  discountPercent Float            @default(0)
+  discountStart   DateTime?
+  discountEnd     DateTime?
+  ratingAvg       Float            @default(0)
+  ratingCount     Int              @default(0)
+  imageUrl        String
+  stock           Int
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  orderLines      OrderLine[]
+  restocks        Restock[]
+  ratings         ProductRating[]
+  favorites       Favorite[]
+  comments        ProductComment[]
 }
 
 model Order {
-  id              String       @id
-  customerId      Int
-  shippingAddress String
-  shippingLatitude Float?
-  shippingLongitude Float?
-  shippingPlaceLabel String?
-  paymentMethod   String
-  total           Float
-  status          OrderStatus  @default(pending)
-  tranId          String?      @unique
-  paymentGateway  String?
-  paymentStatus   PaymentStatus @default(pending)
-  paymentAmount   Float?
-  paymentCurrency String?
-  paymentExpiresAt DateTime?
-  paymentPaidAt   DateTime?
-  paymentVerifiedAt DateTime?
-  paymentLastCheckedAt DateTime?
+  id                        String            @id
+  customerId                Int
+  shippingAddress           String
+  shippingLatitude          Float?
+  shippingLongitude         Float?
+  shippingPlaceLabel        String?
+  paymentMethod             String
+  total                     Float
+  status                    OrderStatus       @default(pending)
+  tranId                    String?           @unique
+  paymentGateway            String?
+  paymentStatus             PaymentStatus     @default(pending)
+  paymentAmount             Float?
+  paymentCurrency           String?
+  paymentExpiresAt          DateTime?
+  paymentPaidAt             DateTime?
+  paymentVerifiedAt         DateTime?
+  paymentLastCheckedAt      DateTime?
   paymentCallbackReceivedAt DateTime?
-  paymentCallbackStatus String?
-  paymentApprovalCode String?
-  paymentFailureReason String?
-  createdAt       DateTime     @default(now())
-  trackingNumber  String?
-  trackingCarrier String?
-  trackingStatus  String?
-  trackingUpdatedAt DateTime?
-  couponCode      String?
-  couponType      CouponType?
-  couponValue     Float?
-  couponDiscount  Float?
-  customer        User         @relation(fields: [customerId], references: [id])
-  lines           OrderLine[]
-  couponRedemption CouponRedemption?
+  paymentCallbackStatus     String?
+  paymentApprovalCode       String?
+  paymentFailureReason      String?
+  createdAt                 DateTime          @default(now())
+  trackingNumber            String?
+  trackingCarrier           String?
+  trackingStatus            String?
+  trackingUpdatedAt         DateTime?
+  couponCode                String?
+  couponType                CouponType?
+  couponValue               Float?
+  couponDiscount            Float?
+  customer                  User              @relation(fields: [customerId], references: [id])
+  lines                     OrderLine[]
+  couponRedemption          CouponRedemption?
 }
 
 model OrderLine {
-  id          Int     @id @default(autoincrement())
-  orderId     String
-  productId   String
-  productName String
-  quantity    Int
-  unitPrice   Float
-  discountPercent Float @default(0)
-  order       Order   @relation(fields: [orderId], references: [id])
-  product     Product @relation(fields: [productId], references: [id])
+  id              Int     @id @default(autoincrement())
+  orderId         String
+  productId       String
+  productName     String
+  quantity        Int
+  unitPrice       Float
+  discountPercent Float   @default(0)
+  order           Order   @relation(fields: [orderId], references: [id])
+  product         Product @relation(fields: [productId], references: [id])
 }
 
 model Restock {
@@ -178,54 +248,54 @@ enum SupportTicketStatus {
 }
 
 model SupportTicket {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  subject   String
-  message   String
-  status    SupportTicketStatus @default(open)
+  id         Int                    @id @default(autoincrement())
+  userId     Int
+  subject    String
+  message    String
+  status     SupportTicketStatus    @default(open)
   adminReply String?
-  repliedAt DateTime?
-  closedAt  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
-  messages  SupportTicketMessage[]
+  repliedAt  DateTime?
+  closedAt   DateTime?
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+  user       User                   @relation(fields: [userId], references: [id])
+  messages   SupportTicketMessage[]
 }
 
 model SupportTicketMessage {
-  id        Int      @id @default(autoincrement())
+  id        Int           @id @default(autoincrement())
   ticketId  Int
   userId    Int
   message   String
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
   ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   user      User          @relation(fields: [userId], references: [id])
 }
 
 model Coupon {
-  id        Int        @id @default(autoincrement())
-  code      String     @unique
-  type      CouponType
-  value     Float
-  isActive  Boolean    @default(true)
-  audience  CouponAudience @default(all)
-  description String?
-  startsAt  DateTime?
-  endsAt    DateTime?
-  userEmail String?
-  createdAt DateTime   @default(now())
+  id                Int                @id @default(autoincrement())
+  code              String             @unique
+  type              CouponType
+  value             Float
+  isActive          Boolean            @default(true)
+  audience          CouponAudience     @default(all)
+  description       String?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  userEmail         String?
+  createdAt         DateTime           @default(now())
   couponRedemptions CouponRedemption[]
 }
 
 model CouponRedemption {
-  id        Int      @id @default(autoincrement())
-  couponId  Int
-  userId    Int
-  orderId   String   @unique
-  usedAt    DateTime @default(now())
-  coupon    Coupon   @relation(fields: [couponId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-  order     Order    @relation(fields: [orderId], references: [id])
+  id       Int      @id @default(autoincrement())
+  couponId Int
+  userId   Int
+  orderId  String   @unique
+  usedAt   DateTime @default(now())
+  coupon   Coupon   @relation(fields: [couponId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+  order    Order    @relation(fields: [orderId], references: [id])
 
   @@unique([couponId, userId])
 }
