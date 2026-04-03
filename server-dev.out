@@ -1,0 +1,9 @@
+
+> grocery-api@1.0.0 dev
+> node src/index.js
+
+API listening on port 4000
+[0mGET /api/health [32m200[0m 28.818 ms - 56[0m
+[0mGET /api/products [32m200[0m 2347.168 ms - 1528[0m
+[0mGET /api/health [32m200[0m 3.205 ms - 56[0m
+[0mGET /api/products [32m200[0m 2299.235 ms - 1528[0m

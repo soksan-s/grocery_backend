@@ -1,0 +1,1 @@
+DATABASE_URL is missing or still using the placeholder value. Public catalog routes will use demo fallback data.
