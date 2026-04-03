@@ -40,6 +40,7 @@ router.post('/', requireAuth, async (req, res) => {
       shippingLatitude: req.body?.shippingLatitude,
       shippingLongitude: req.body?.shippingLongitude,
       shippingPlaceLabel: req.body?.shippingPlaceLabel,
+      orderId: req.body?.orderId,
     });
 
     const order = await commitOrderDraft(draft);
@@ -50,6 +51,22 @@ router.post('/', requireAuth, async (req, res) => {
     }
     throw error;
   }
+});
+
+router.get('/:id', requireAuth, async (req, res) => {
+  const order = await prisma.order.findUnique({
+    where: { id: req.params.id },
+    include: { customer: true },
+  });
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  if (req.user.role !== 'admin' && order.customerId !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  return res.json(mapOrder(order));
 });
 
 router.patch('/:id/status', requireAuth, requireRole('admin'), async (req, res) => {
