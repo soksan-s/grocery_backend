@@ -50,6 +50,25 @@ function createOtpCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function buildEmailFailureHint(errorMessage) {
+  const normalized = normalizeText(errorMessage).toLowerCase();
+
+  if (normalized.includes('email delivery is not configured')) {
+    return 'Check SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and EMAIL_FROM in Railway.';
+  }
+
+  if (
+    normalized.includes('invalid login') ||
+    normalized.includes('authentication') ||
+    normalized.includes('auth') ||
+    normalized.includes('535')
+  ) {
+    return 'Check Railway SMTP credentials. If you use Gmail, use a Google App Password and make sure it is copied correctly.';
+  }
+
+  return 'Check Railway SMTP settings and server logs, then try again.';
+}
+
 function signAuthToken(user) {
   const payload = { id: user.id, email: user.email, role: user.role };
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -501,6 +520,7 @@ router.post('/forgot-password', authLimiter, async (req, res) => {
       );
       return res.status(500).json({
         error: 'Unable to send password reset email right now. Please try again.',
+        hint: buildEmailFailureHint(resetEmail.error),
       });
     }
 
@@ -622,6 +642,7 @@ router.post('/send-email-verification', authLimiter, async (req, res) => {
       );
       return res.status(500).json({
         error: 'Unable to send verification email right now. Please try again.',
+        hint: buildEmailFailureHint(verificationEmail.error),
       });
     }
 

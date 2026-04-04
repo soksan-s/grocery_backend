@@ -25,11 +25,13 @@ Email delivery with Gmail SMTP requires:
 - `EMAIL_FROM`
   Example: `EMAIL_FROM=Grocery App <your-account@gmail.com>`
   Gmail SMTP usually uses `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, and a Google App Password for `SMTP_PASS`.
+  If Google shows the App Password with spaces between groups, this server now normalizes that format automatically for Gmail SMTP.
 
 Railway note:
 
 - Railway does not use your local `server/.env` file from GitHub. Add the same variables in the Railway service settings.
 - If `BASE_URL` is not set, the payment route now falls back to the request's public host, but setting `BASE_URL` explicitly is still recommended.
+- `GET /api/health` now reports `auth.emailConfigured` and `auth.googleConfigured` so you can confirm the deployed service has the required auth config values.
 
 ## ABA PayWay KHQR
 
