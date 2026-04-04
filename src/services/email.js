@@ -14,13 +14,45 @@ function normalizePort(value) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function isGmailHost(host) {
+  const normalized = normalizeText(host).toLowerCase();
+  return normalized === 'smtp.gmail.com' || normalized.endsWith('.gmail.com');
+}
+
+function normalizePassword(value, host) {
+  const normalized = normalizeText(value);
+  if (!isGmailHost(host)) {
+    return normalized;
+  }
+
+  // Gmail app passwords are commonly copied with spaces between groups.
+  return normalized.replace(/\s+/g, '');
+}
+
 function getEmailConfig() {
+  const host = normalizeText(process.env.SMTP_HOST);
   return {
-    host: normalizeText(process.env.SMTP_HOST),
+    host,
     port: normalizePort(process.env.SMTP_PORT),
     user: normalizeText(process.env.SMTP_USER),
-    pass: normalizeText(process.env.SMTP_PASS),
+    pass: normalizePassword(process.env.SMTP_PASS, host),
     from: normalizeText(process.env.EMAIL_FROM),
+  };
+}
+
+export function getEmailConfigStatus() {
+  const config = getEmailConfig();
+  const missing = [
+    !config.host && 'SMTP_HOST',
+    !config.port && 'SMTP_PORT',
+    !config.user && 'SMTP_USER',
+    !config.pass && 'SMTP_PASS',
+    !config.from && 'EMAIL_FROM',
+  ].filter(Boolean);
+
+  return {
+    configured: missing.length === 0,
+    missing,
   };
 }
 
@@ -28,7 +60,9 @@ let cachedTransporter = null;
 let cachedTransportKey = '';
 
 function getTransporter(config) {
-  const transportKey = `${config.host}:${config.port}:${config.user}`;
+  const transportKey =
+    `${config.host}:${config.port}:${config.user}:` +
+    `${config.from}:${config.pass}`;
   if (cachedTransporter && cachedTransportKey === transportKey) {
     return cachedTransporter;
   }
@@ -48,13 +82,7 @@ function getTransporter(config) {
 
 async function sendEmail({ to, subject, html, text }) {
   const config = getEmailConfig();
-  const missingConfig = [
-    !config.host && 'SMTP_HOST',
-    !config.port && 'SMTP_PORT',
-    !config.user && 'SMTP_USER',
-    !config.pass && 'SMTP_PASS',
-    !config.from && 'EMAIL_FROM',
-  ].filter(Boolean);
+  const missingConfig = getEmailConfigStatus().missing;
 
   if (missingConfig.length > 0) {
     return {

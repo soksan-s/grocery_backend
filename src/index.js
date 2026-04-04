@@ -22,6 +22,7 @@ import commentRoutes from './routes/comments.js';
 import paywayRoutes from './routes/payway.js';
 import paymentRoutes from './routes/payments.js';
 import deliveryLocationRoutes from './routes/delivery_locations.js';
+import { getEmailConfigStatus } from './services/email.js';
 
 dotenv.config();
 
@@ -78,10 +79,18 @@ app.use(express.json());
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 app.get('/api/health', (req, res) => {
+  const emailConfig = getEmailConfigStatus();
+  const googleConfigured = (process.env.GOOGLE_CLIENT_ID ?? '').trim().length > 0;
+
   res.json({
     status: 'ok',
     databaseConfigured: hasUsableDatabaseUrl,
     mode: hasUsableDatabaseUrl ? 'database' : 'demo',
+    auth: {
+      emailConfigured: emailConfig.configured,
+      googleConfigured,
+      ...(isProduction ? {} : { emailMissing: emailConfig.missing }),
+    },
   });
 });
 
